@@ -49,3 +49,52 @@ mysql> show databases;
 +--------------------+
 5 rows in set (0.00 sec)
 
+
+
+ORM:
+
+frozenset是冻结的集合，它是不可变的，存在哈希值，好处是它可以作为字典的key，也可以作为其它集合的元素。缺点是一旦创建便不能更改，没有add，remove方法。
+
+字段 就是db中表的列的名字 Field
+
+metaclass 元类:
+元类就是用来创建类的“东西”。你创建类就是为了创建类的实例对象，不是吗？但是我们已经学习到了Python中的类也是对象。好吧，元类就是用来创建这些类（对象）的，元类就是类的类
+函数type实际上是一个元类。type就是Python在背后用来创建所有类的元类
+str是用来创建字符串对象的类，而int是用来创建整数对象的类。type就是创建类对象的类
+元类就是创建类这种对象的东西。如果你喜欢的话，可以把元类称为“类工厂”（不要和工厂类搞混了:D） type就是Python的内建元类，当然了，你也可以创建自己的元类。
+就元类本身而言，它们其实是很简单的：
+
+1)   拦截类的创建
+
+2)   修改类
+
+3)   返回修改之后的类
+
+
+dict--->model  基类  __metaclass__ = modelMetaClass python会通过modelMetaClass创建一个model的"类对象"
+
+type --> modelMetaClass 用来读取具体子类的信息
+
+
+obj --> field
+
+Always use self for the first argument to instance methods.
+
+Always use cls for the first argument to class methods.
+
+Blob:
+MySQL中，BLOB是个类型系列，包括：TinyBlob、Blob、MediumBlob、LongBlob，这几个类型之间的唯一区别是在存储文件的最大大小上不同。
+MySQL的四种BLOB类型
+类型 大小(单位：字节)
+TinyBlob 最大 255
+Blob 最大 64K
+MediumBlob 最大16M
+LongBlob 最大 4G
+
+BLOB (binary large object)，二进制大对象，是一个可以存储二进制文件的容器。
+在计算机中，BLOB常常是数据库中用来存储二进制文件的字段类型。
+BLOB是一个大文件，典型的BLOB是一张图片或一个声音文件，由于它们的尺寸，必须使用特殊的方式来处理（例如：上传、下载或者存放到一个数据库）。
+
+
+
+
