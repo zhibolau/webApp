@@ -10,6 +10,35 @@ import functools
 
 __author__ = 'Zhibo Liu'
 
+# db得先有 连接(惰性连接) 然后再处理sql语句(也就是用 事务)
+
+
+class Dict(dict):
+    '''
+    实现一个简单的可以通过属性访问的字典，比如 x.key = value
+    '''
+    def __init__(self,names=(), values=(), **kw):
+        super(Dict, self).__init__(**kw)
+        for k,v in zip(names, values):
+            #zip([seql, ...])接受一系列可迭代对象作为参数，将对象中对应的元素打包成一个个tuple（元组），
+            # 然后返回由这些tuples组成的list（列表）。若传入参数的长度不等，则返回list的长度和参数中长度最短的对象相同。
+            '''
+            >>> z1=[1,2,3]
+            >>> z2=[4,5,6]
+            >>> result=zip(z1,z2)
+            >>> result  ---->  [(1, 4), (2, 5), (3, 6)]
+            '''
+            self[k] = v
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
 #engine对象持有数据库连接
 engine = None
 
@@ -19,6 +48,25 @@ class DBError(Exception):
 
 class MultiColumnError(DBError):
     pass
+
+
+
+'''
+_xxx       不能用'from module import *'导入
+
+__xxx__  系统定义名字
+
+__xxx     类中的私有变量名
+
+'''
+
+class _Engine(object):#db 引擎对象
+    def __init__(self,connect):
+        self._connect = connect
+
+    def connect(self):
+        return self._connect()
+
 
 '''
 def foo(*args, **kwargs):
@@ -50,6 +98,7 @@ kwargs =  {'a': 1, 'c': 3, 'b': '2'}
 会提示语法错误“SyntaxError: non-keyword arg after keyword arg”。
 '''
 def create_engine(user, password, database, host='127.0.0.1', port = 3306, **kw):
+    # 生成全局对象engine 持有db连接
     import mysql.connector
     #为一个定义在函数外的变量赋值 就要告诉python此变量为global的
     global engine
@@ -68,21 +117,6 @@ def create_engine(user, password, database, host='127.0.0.1', port = 3306, **kw)
     #test connect.........
     logging.info('init mysql engine <%s> ok. ' % hex(id(engine)))
 
-'''
-_xxx       不能用'from module import *'导入
-
-__xxx__  系统定义名字
-
-__xxx     类中的私有变量名
-
-'''
-
-class _Engine(object):
-    def __init__(self,connect):
-        self._connect = connect
-
-    def connect(self):
-        return self._connect()
 
 def next_id(t=None):
     #create an unique id
@@ -213,3 +247,184 @@ class _ConnectionCtx(object):
 如果事务中有的操作没有成功完成，则事务中的所有操作都需要被回滚，回到事务执行前的状态（要么全执行，要么全都不执行）;
 同时，该事务对数据库或者其他事务的执行无影响，所有的事务都好像在独立的运行
 """
+
+class _TransactionCtx(object):
+    # deal with db transactions
+    """
+       事务嵌套比Connection嵌套复杂一点，因为事务嵌套需要计数，
+       每遇到一层嵌套就+1，离开一层嵌套就-1，最后到0时提交事务
+    """
+    def __enter__(self):
+        global _db_ctx # threading.local obj
+        self.should_close_conn = False #所有sql语句执行结束 就设置为true exit函数会用到
+        if not _db_ctx.is_init():
+            _db_ctx.init()
+            self.should_close_conn = True
+        _db_ctx.transactions = _db_ctx.transactions+1
+        logging.info('Transaction Starts! ' if _db_ctx.transactions ==1 else 'This sql will join current transaction....')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        '''
+        __exit__()的参数中exc_type, exc_value, traceback用于描述异常。
+        异常类型，异常值,异常追踪信息
+        我们可以根据这三个参数进行相应的处理。如果正常运行结束，这三个参数都是None。
+        '''
+        global _db_ctx
+        _db_ctx.transactions = _db_ctx.transactions - 1
+        try:
+            if _db_ctx.transactions==0:
+                '''
+                commit()方法执行游标的所有更新操作，rollback（）方法回滚当前游标的所有操作。每一个方法都开始了一个新的事务。
+                '''
+                if exc_type is None:
+                    self.commit()
+                else:
+                    self.rollback()
+        finally:
+            if self.should_close_conn:
+                _db_ctx.cleanup()##清理连接对象 关闭连接   参照class找到cleanup
+
+    def commit(self):
+        global _db_ctx
+        logging.info('Current transaction is being committed')
+        try:
+            _db_ctx.connection.commit()
+            logging.info('Commit is successfully finished. ')
+        except:
+            logging.warning('Commit failed. Rollback the current commit.')
+            _db_ctx.connection.rollback()
+            logging.info('Rollback finished. __from commit() _TransactionCtx')
+            raise
+
+    def rollback(self):
+        global _db_ctx
+        logging.info('This is rollback func. I am rollbacking current transaction. ')
+        _db_ctx.connection.rollback()
+        logging.info('This is rollback func.Rollback finished. ')
+
+def transaction():
+    #实现事务功能
+    return _TransactionCtx()
+
+def with_transaction(func):
+    #设计一个装饰器 替换with语法
+    @functools.wraps(func)
+    def _wrapper(*args, **kw):
+        _start = time.time()
+        with _TransactionCtx():
+            return func(*args, **kw)
+        _profiling(_start)
+    return _wrapper
+
+def _select(sql, first, *args):  # first 代表是不是直选一个记录 得下有select_one  妈的应该用 one_record
+    """
+        执行SQL，返回一个结果 或者多个结果组成的列表
+    """
+    global _db_ctx
+    cursor = None
+    sql = sql.replace('?', '%s')
+    # Python replace() 方法把字符串中的 old（旧字符串） 替换成 new(新字符串)，
+    # 如果指定第三个参数max，则替换不超过 max 次。
+    logging.info('SQL: %s, ARGS: %s' % (sql, args))
+    try:
+        cursor = _db_ctx.connection.cursor()
+        cursor.execute(sql, args)
+        if cursor.description:
+            #cursor.description returns a list of tuples describing the columns in a result set
+            #只用于select语句，返回一行的列名
+            names = [x[0] for x in cursor.description] #拿到 每行的名字
+        if first:
+            values = cursor.fetchone()
+            if not values:
+                return None
+            return Dict(names,values) #拿到所有数据 包括 名字与数值
+        return [Dict(names,x) for x in cursor.fetchall()]
+    finally:
+        if cursor:
+            cursor.close()
+
+@with_connection
+def select_one(sql, *args):
+    """
+      执行SQL 仅返回一个结果
+      如果没有结果 返回None
+      如果有1个结果，返回一个结果
+      如果有多个结果，返回第一个结果
+    """
+    return _select(sql, True, *args)
+
+@with_connection
+def select_int(sql, *args):
+    """
+        执行一个sql 返回一个数值，
+        注意仅一个数值，如果返回多个数值将触发异常
+    """
+    d = _select(sql, True, *args)
+    if len(d) !=1:
+        raise MultiColumnError('ONLY one column is expected! ')
+    return d.values(0)
+
+@with_connection
+def select(sql, *args):
+    """
+        执行sql 以列表形式返回结果
+        其实是 select_multi
+    """
+    return _select(sql, False, *args)
+
+@with_connection
+def _update(sql, *args):
+    """
+        执行update 语句，返回update的行数
+    """
+    global _db_ctx
+    cursor = None
+    sql = sql.replace('?', '%s')
+    logging.info('SQL: %s, ARGS: %s' % (sql, args))
+    try:
+        cursor = _db_ctx.connection.cursor()
+        cursor.execute(sql, args)
+        r = cursor.rowcount
+        if _db_ctx.transactions == 0:
+            logging.info('There is no transaction environment. Auto commit is going to happen! ')
+            _db_ctx.connection.commit()
+        return r
+    finally:
+        if cursor:
+            cursor.close()
+def update(sql, *args):
+    """
+        执行update 语句，返回update的行数"""
+    return _update(sql, *args)
+
+
+def insert(table, **kw):
+    cols, args = zip(*kw.iteritems())
+    # why use *kw not **kw ???????????????????????????  反zip???? 猜对啦
+    #zip()配合*号操作符,可以将已经zip过的列表对象解压
+    #剖离出 col row对应的value 把什么什么插入到此表中的什么什么位置
+    #反zip 就是把原dict中 key都放在一个list value放一list
+    # cols =[key] list
+    # args = [value] list
+    sql = 'insert into `%s` (%s) values (%s)' %\
+                      (table,
+                             ','.join(['`%s`' % col for col in cols]),
+                                        ','.join(['?' for i in range(len(cols))])) #此处? 在_update中会被替换成%s
+    #大sql句子不好理解!!!!!!!!!!!!!!!!!!!!!!!!!
+    return _update(sql, *args)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    create_engine('root', 'password', 'testWebApp')# test时候此database得存在
+    update('drop table if exists user')
+    update('create table user (id int primary key, name text, email text, password text, last_modified real)')
+    import doctest
+    doctest.testmod()
+
+
+
+
+
+

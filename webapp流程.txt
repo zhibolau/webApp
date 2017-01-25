@@ -2,14 +2,50 @@ webapp
 
 db:
 
-dict
+写db时候 先建立连接 然后写sql语句
 
-_TransactionCtx
 
-transaction
 
-with_transaction
+test时候database testWebApp得存在 否则报错连接不上 
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
+| test               |
++--------------------+
+5 rows in set (0.00 sec)
 
-sql语句
+mysql> drop database test;
+Query OK, 1 row affected (0.00 sec)
 
-__name__
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
++--------------------+
+4 rows in set (0.00 sec)
+
+
+mysql> create database testWebApp;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
+| testWebApp         |
++--------------------+
+5 rows in set (0.00 sec)
+
