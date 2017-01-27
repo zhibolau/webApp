@@ -72,11 +72,11 @@ class Field(object):
         #kwargs 是字典
         self.name = kwargs.get('name', None) #第二个参数是默认值
         self._default = kwargs.get('default', None)
-        self.primary_key = kwargs.get('primary_key', None)
-        self.nullable = kwargs.get('nullable', None)
-        self.updatable = kwargs.get('updatable', None)
-        self.insertable = kwargs.get('insertable', None)
-        self.ddl = kwargs.get('ddl', None) #实例ddl属性：实例default信息，3中标志位：N U I
+        self.primary_key = kwargs.get('primary_key', False)
+        self.nullable = kwargs.get('nullable', False)
+        self.updatable = kwargs.get('updatable', True)
+        self.insertable = kwargs.get('insertable', True)
+        self.ddl = kwargs.get('ddl', '') #实例ddl属性：实例default信息，3中标志位：N U I
         self._order = Field._count
         Field._count +=1
 
@@ -251,7 +251,7 @@ class ModelMetaClass(type):
             #Always use self for the first argument to instance methods.
             #Always use cls for the first argument to class methods.
         # store all subclasses info
-        if not hasattr(cls,'subckasses'):
+        if not hasattr(cls,'subclasses'):
             cls.subclasses = {}
         if not name in cls.subclasses:
             cls.subclasses[name] = name
@@ -371,7 +371,7 @@ class Model(dict):
     def __init__(self, **kwargs):
         super(Model,self).__init__(**kwargs)
 
-    def __get__(self, key):
+    def __getattr__(self, key):
         """
                 get时生效，比如 a[key],  a.get(key)
                 get时 返回属性的值
@@ -514,7 +514,7 @@ class Model(dict):
                 if not hasattr(self,k):
                     setattr(self,k,v.default)
                 params[v.name] = getattr(self,k)
-        db.insert('%s' % self.__table__,**params)
+        db.insert('%s' % self.__table__, **params)
         return self
 
 if __name__ == '__main__':
