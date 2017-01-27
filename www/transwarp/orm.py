@@ -251,7 +251,7 @@ class ModelMetaClass(type):
             #Always use self for the first argument to instance methods.
             #Always use cls for the first argument to class methods.
         # store all subclasses info
-        if not hasattr(cls,'subckasses'):
+        if not hasattr(cls,'subclasses'):
             cls.subclasses = {}
         if not name in cls.subclasses:
             cls.subclasses[name] = name
@@ -371,7 +371,7 @@ class Model(dict):
     def __init__(self, **kwargs):
         super(Model,self).__init__(**kwargs)
 
-    def __get__(self, key):
+    def __getattr__(self, key):
         """
                 get时生效，比如 a[key],  a.get(key)
                 get时 返回属性的值
