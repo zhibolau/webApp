@@ -1,0 +1,23 @@
+webFrame.txt
+
+http ---> WSGI server ---> WSGI 函数
+
+
+
+设计web框架接口：
+    1. URL路由： 用于URL 到 处理函数的映射     webFrame 做 url 到函数的映射 
+    2. URL拦截： 用于根据URL做权限检测
+    3. 视图： 用于HTML页面生成
+    4. 数据模型： 用于抽取数据（见models模块）
+    5. 事物数据：request数据和response数据的封装（thread local）
+
+
+全局ThreadLocal对象:   实现事物数据接口, 实现request 数据和response数据的存储
+
+
+UTC:
+如果要把一个类的实例变成 str，就需要实现特殊方法__str__()：
+__str__()用于显示给用户，而__repr__()用于显示给开发人员。
+
+
+
