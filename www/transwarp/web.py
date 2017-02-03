@@ -985,8 +985,129 @@ class Response(object):
 # 实现URL路由功能
 # 将URL 映射到 函数上
 #################################################################
+_re_route = re.compile(r'(:[a-zA-Z_]\w*)')
 
+# 方法的装饰器，用于捕获url
+def get(path):
+    """
+        A @get decorator.
+        @get('/:id')
+        def index(id):
+            pass
+        >>> @get('/test/:id')
+        ... def test():
+        ...     return 'ok'
+        ...
+        >>> test.__web_route__
+        '/test/:id'
+        >>> test.__web_method__
+        'GET'
+        >>> test()
+        'ok'
+        """
+    def _decorator(func):
+        func.__web_route__ = path
+        func.__web_method__ = 'GET'
+        return func
+    return _decorator
 
+def post(path):
+    """
+        A @post decorator.
+        >>> @post('/post/:id')
+        ... def testpost():
+        ...     return '200'
+        ...
+        >>> testpost.__web_route__
+        '/post/:id'
+        >>> testpost.__web_method__
+        'POST'
+        >>> testpost()
+        '200'
+        """
+    def _decorator(func):
+        func.__web_route__ = path
+        func.__web_method__ = 'POST'
+        return func
+    return _decorator
+
+def _build_regex(path):
+    r"""
+        用于将路径转换成正则表达式，并捕获其中的参数
+        >>> _build_regex('/path/to/:file')
+        '^\\/path\\/to\\/(?P<file>[^\\/]+)$'
+        >>> _build_regex('/:user/:comments/list')
+        '^\\/(?P<user>[^\\/]+)\\/(?P<comments>[^\\/]+)\\/list$'
+        >>> _build_regex(':id-:pid/:w')
+        '^(?P<id>[^\\/]+)\\-(?P<pid>[^\\/]+)\\/(?P<w>[^\\/]+)$'
+        """
+    re_list = ['^']
+    var_list = []
+    is_var = False
+    for v in _re_route.split(path):
+        if is_var:
+            var_name = v[1:]
+            var_list.append(var_name)
+            re_list.append(r'(?P<%s>[^\/]+' % var_name)
+        else:
+            s =''
+            for ch in v:
+                if '0' <= ch <= '9':
+                    s +=ch
+                elif 'A' <= ch <= 'Z':
+                    s += ch
+                elif 'a' <= ch <= 'z':
+                    s += ch
+                else:
+                    s = s + '\\' + ch
+            re_list.append(s)
+        is_var = not is_var
+    re_list.append('$')
+    return ''.join(re_list)
+
+def _static_file_generator(fpath, block_size=8192):
+    """
+        读取静态文件的一个生成器
+        """
+    with open(fpath, 'rb') as f:
+        block = f.read(block_size)
+        while block_size:
+            yield block
+            block=f.read(block_size)
+
+class Route(object):
+    """
+        动态路由对象，处理 装饰器捕获的url 和 函数
+        比如：
+                @get('/:id')
+                    def index(id):
+                    pass
+        在构造器中 path、method、is_static、route 和url相关
+        而 func 则指的装饰器里的func，比如上面的index函数
+        """
+    def __init__(self,func):
+        """
+                path： 通过method的装饰器捕获的path
+                method： 通过method装饰器捕获的method
+                is_static： 路径是否含变量，含变量为True
+                route：动态url（含变量）则捕获其变量的 re
+                func： 方法装饰器里定义的函数
+                """
+        self.path = func.__web_route__
+        self.method = func.__web_method__
+        self.is_static = _re_route.search(self.path) is None
+        if not self.is_static:
+            self.route = re.compile(_build_regex(self.path))
+        self.func =func
+
+    def match(self,url):
+        """
+                传入url，返回捕获的变量
+                """
+        m = self.route.match(url)
+        if m:
+            return m.groups()
+        return None
 
 
 
